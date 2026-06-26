@@ -1,0 +1,10 @@
+http://:9010 {
+  encode gzip
+  reverse_proxy quick-portal:3001
+}
+
+https://:9443 {
+  encode gzip
+  tls /data/selfsigned.crt /data/selfsigned.key
+  reverse_proxy quick-portal:3001
+}

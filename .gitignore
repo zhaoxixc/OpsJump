@@ -1,0 +1,8 @@
+node_modules/
+dist/
+data/
+caddy_data/
+caddy_config/
+portal-dev.*
+server-test.*
+.DS_Store

@@ -1,0 +1,37 @@
+{
+  "name": "quick-portal",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.js",
+    "build": "node node_modules/vite/bin/vite.js build",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "@novnc/novnc": "^1.5.0",
+    "basic-ftp": "^5.0.5",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "guacamole-common-js": "^1.5.0",
+    "guacamole-lite": "^1.2.0",
+    "iconv-lite": "^0.6.3",
+    "jsonwebtoken": "^9.0.2",
+    "node-rdpjs": "^0.3.0",
+    "sql.js": "^1.11.0",
+    "ssh2": "^1.17.0",
+    "ssh2-sftp-client": "^12.0.1",
+    "uuid": "^11.0.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.14",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  }
+}

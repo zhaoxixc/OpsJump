@@ -1,0 +1,8 @@
+node_modules
+dist
+.git
+.DS_Store
+npm-debug.log
+yarn-error.log
+portal-dev.out
+server-test.out

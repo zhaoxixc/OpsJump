@@ -1,0 +1,40 @@
+services:
+  guacd:
+    image: guacamole/guacd:1.5.5
+    restart: unless-stopped
+
+  quick-portal:
+    build: .
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      guacd:
+        condition: service_started
+    environment:
+      PORT: 3001
+      JWT_SECRET: change-me
+      GUAC_SECRET: change-me
+      GUACD_HOST: guacd
+      GUACD_PORT: 4822
+      DB_PATH: /app/data/app.db
+      TLS_CERT_DIR: /caddy-data
+      TLS_HOSTS: ${TLS_HOSTS:-localhost,127.0.0.1}
+    volumes:
+      - ./data:/app/data
+      - ./caddy_data:/caddy-data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    depends_on:
+      - quick-portal
+    ports:
+      - "9010:9010"
+      - "9443:9443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy_data:/data
+      - ./caddy_config:/config
+    command: >
+      sh -c 'until [ -f /data/selfsigned.crt ] && [ -f /data/selfsigned.key ]; do sleep 1; done; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
+    restart: unless-stopped
