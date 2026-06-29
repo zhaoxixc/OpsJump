@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from './api';
 import { clearAuth, getStoredAuth, saveAuth } from './auth';
-import VncViewer from './VncViewer';
-import SshTerminal from './SshTerminal';
-import RdpViewer from './RdpViewer';
+
+const VncViewer = lazy(() => import('./VncViewer'));
+const SshTerminal = lazy(() => import('./SshTerminal'));
+const RdpViewer = lazy(() => import('./RdpViewer'));
 
 const emptyShortcut = { title: '', url: '', icon: '', color: '#2563eb', sortOrder: 0 };
 const emptyLogin = { host: '', port: 21, username: '', password: '', useSsl: false };
@@ -124,6 +125,19 @@ function Card({ title, subtitle, action, children }) {
   );
 }
 
+function FullscreenToolbar({ label, status, onExit, onDisconnect }) {
+  return (
+    <div className="fullscreen-toolbar">
+      <div>
+        <strong>{label}</strong>
+        <small>{status}</small>
+      </div>
+      <button className="ghost" type="button" onClick={onExit}>退出全屏</button>
+      {onDisconnect ? <button className="ghost danger" type="button" onClick={onDisconnect}>断开</button> : null}
+    </div>
+  );
+}
+
 function Modal({ title, onClose, children }) {
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -206,18 +220,42 @@ function RemotePanel({
 }) {
   const fileInputRef = useRef(null);
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [isCompact, setIsCompact] = useState(false);
+  const [transferStatus, setTransferStatus] = useState('');
   const pageSize = 20;
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 900px)');
+    const update = () => setIsCompact(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    media.addListener?.(update);
+    return () => {
+      media.removeEventListener?.('change', update);
+      media.removeListener?.(update);
+    };
+  }, []);
 
   const authedRequest = async (path, options = {}) => apiRequest(path, { ...options, token });
 
   const loadPath = async (nextPath = currentPath || '/', allowDisconnected = false) => {
     if (!allowDisconnected && !connected) return;
-    const data = await authedRequest(listApi, { method: 'POST', body: { ...login, remotePath: nextPath } });
-    setItems(data.items || []);
-    setCurrentPath(nextPath);
-    setStatus(data.message || '登录成功');
-    setConnected(true);
-    setPage(1);
+    setLoading(true);
+    try {
+      const data = await authedRequest(listApi, { method: 'POST', body: { ...login, remotePath: nextPath } });
+      setItems(data.items || []);
+      setCurrentPath(nextPath);
+      setStatus(data.message || `${label} 已连接`);
+      setConnected(true);
+      setPage(1);
+    } catch (error) {
+      if (allowDisconnected) throw error;
+      pushNotice(error instanceof Error ? error.message : `${label} 浏览失败`);
+      setStatus(`${label} 浏览失败`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleConnect = async (e) => {
@@ -234,23 +272,23 @@ function RemotePanel({
   };
 
   const goParent = async () => {
-    if (!connected) return;
+    if (!connected || loading) return;
     await loadPath(parentPath(currentPath));
   };
 
   const openDir = async (name) => {
-    if (!connected) return;
+    if (!connected || loading) return;
     await loadPath(joinPath(currentPath, name));
   };
 
   const openBreadcrumb = async (index) => {
-    if (!connected) return;
+    if (!connected || loading) return;
     const parts = splitPath(currentPath).slice(0, index + 1);
     await loadPath(parts.length ? `/${parts.join('/')}` : '/');
   };
 
   const refresh = async () => {
-    if (!connected) return;
+    if (!connected || loading) return;
     await loadPath(currentPath || '/');
   };
 
@@ -259,8 +297,9 @@ function RemotePanel({
   const paginatedItems = items.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const doDownload = async (item) => {
-    if (!connected) return;
+    if (!connected || loading) return;
     try {
+      setTransferStatus(`正在下载 ${item.name}...`);
       const response = await fetch(streamApiPath(downloadApi), {
         method: 'POST',
         headers: {
@@ -280,18 +319,21 @@ function RemotePanel({
       a.download = item.name;
       a.click();
       URL.revokeObjectURL(url);
+      setTransferStatus(`已下载 ${item.name}`);
     } catch (error) {
       pushNotice(error instanceof Error ? error.message : `${label} 下载失败`);
+      setTransferStatus('下载失败');
     }
   };
 
   const doDelete = async (item) => {
-    if (!connected) return;
+    if (!connected || loading) return;
     if (!window.confirm(`删除 ${item.name} ?`)) return;
     try {
       await authedRequest(deleteApi, { method: 'POST', body: { ...login, remotePath: joinPath(currentPath, item.name) } });
       await refresh();
       await refreshLogs();
+      setTransferStatus(`已删除 ${item.name}`);
     } catch (error) {
       pushNotice(error instanceof Error ? error.message : `${label} 删除失败`);
     }
@@ -308,18 +350,19 @@ function RemotePanel({
   };
 
   const triggerUpload = () => {
-    if (!connected) return;
+    if (!connected || loading) return;
     fileInputRef.current?.click();
   };
 
   const uploadFile = async (event) => {
-    if (!connected) {
+    if (!connected || loading) {
       event.target.value = '';
       return;
     }
     const file = event.target.files?.[0];
     if (!file) return;
     try {
+      setTransferStatus(`正在上传 ${file.name}...`);
       const response = await fetch(streamApiPath(uploadApi), {
         method: 'POST',
         headers: {
@@ -333,8 +376,10 @@ function RemotePanel({
       fileInputRef.current.value = '';
       await refresh();
       await refreshLogs();
+      setTransferStatus(`已上传 ${file.name}`);
     } catch (error) {
       pushNotice(error instanceof Error ? error.message : `${label} 上传失败`);
+      setTransferStatus('上传失败');
     }
   };
 
@@ -344,9 +389,10 @@ function RemotePanel({
       subtitle="输入连接信息后直接进入目录浏览、上传、下载和删除"
       action={(
       <div className="remote-actions sticky">
-          <button className="ghost" type="button" onClick={goParent} disabled={!connected}>上一级</button>
-          <button className="ghost" type="button" onClick={triggerUpload} disabled={!connected}>上传</button>
-          <button className="ghost danger" type="button" onClick={disconnect} disabled={!connected}>断开连接</button>
+          <button className="ghost" type="button" onClick={goParent} disabled={!connected || loading}>上一级</button>
+          <button className="ghost" type="button" onClick={refresh} disabled={!connected || loading}>刷新</button>
+          <button className="ghost" type="button" onClick={triggerUpload} disabled={!connected || loading}>上传</button>
+          <button className="ghost danger" type="button" onClick={disconnect} disabled={!connected || loading}>断开连接</button>
         </div>
       )}
     >
@@ -369,7 +415,12 @@ function RemotePanel({
       </form>
 
       <input ref={fileInputRef} type="file" hidden onChange={uploadFile} />
-      <div className="status-line">状态: {status || '未连接'} | 当前路径: {currentPath || '/'}</div>
+      <div className="status-strip">
+        <span className={connected ? 'status-pill ok' : 'status-pill'}>{connected ? (loading ? '浏览中' : '已连接') : '未连接'}</span>
+        <span>状态: {connected ? (loading ? '加载中...' : (status || `${label} 已连接`)) : '未连接'}</span>
+        <span>路径: {currentPath || '/'}</span>
+        {transferStatus ? <span>{transferStatus}</span> : null}
+      </div>
 
       <div className="breadcrumbs">
         <button className="ghost" type="button" onClick={() => loadPath('/', true)} disabled={!connected}>/</button>
@@ -380,23 +431,47 @@ function RemotePanel({
         ))}
       </div>
 
-      <div className="explorer-shell">
-        <aside className="explorer-tree">
-          <div className="explorer-title">目录树</div>
-          <button className="tree-node active" type="button" onClick={() => loadPath('/', true)} disabled={!connected}>/</button>
-          {splitPath(currentPath).map((part, index) => (
-            <button key={`${part}-${index}`} className="tree-node" type="button" onClick={() => openBreadcrumb(index)} disabled={!connected}>
-              {part}
-            </button>
-          ))}
-          {items.filter((item) => item.type === 'directory').map((item) => (
-            <button key={item.name} className="tree-node child" type="button" onClick={() => openDir(item.name)} disabled={!connected}>
-              {item.name}
-            </button>
-          ))}
-        </aside>
+      <div className={isCompact ? 'explorer-shell compact' : 'explorer-shell'}>
+        {!isCompact ? (
+          <aside className="explorer-tree">
+            <div className="explorer-title">目录树</div>
+            <button className="tree-node active" type="button" onClick={() => loadPath('/', true)} disabled={!connected || loading}>/</button>
+            {splitPath(currentPath).map((part, index) => (
+              <button key={`${part}-${index}`} className="tree-node" type="button" onClick={() => openBreadcrumb(index)} disabled={!connected || loading}>
+                {part}
+              </button>
+            ))}
+            {items.filter((item) => item.type === 'directory').map((item) => (
+              <button key={item.name} className="tree-node child" type="button" onClick={() => openDir(item.name)} disabled={!connected || loading}>
+                {item.name}
+              </button>
+            ))}
+          </aside>
+        ) : null}
 
         <div className="table-wrap remote-table">
+          {isCompact ? (
+            <div className="remote-list">
+              {paginatedItems.map((item) => (
+                <article key={`${item.name}-${item.type}`} className="remote-item">
+                  <div className="remote-item-main">
+                    <strong>{item.name}</strong>
+                    <small>{item.type === 'directory' ? '目录' : '文件'} · {item.size || '-'} · {formatTime(item.modifiedAt)}</small>
+                  </div>
+                  <div className="remote-item-actions">
+                    {item.type === 'directory' ? (
+                      <button className="ghost" type="button" onClick={() => openDir(item.name)} disabled={!connected || loading}>打开</button>
+                    ) : (
+                      <>
+                        <button className="ghost" type="button" onClick={() => doDownload(item)} disabled={!connected || loading}>下载</button>
+                        <button className="ghost danger" type="button" onClick={() => doDelete(item)} disabled={!connected || loading}>删除</button>
+                      </>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
           <table>
             <thead>
               <tr>
@@ -428,6 +503,7 @@ function RemotePanel({
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </div>
       {items.length > pageSize ? (
@@ -495,6 +571,8 @@ export default function App() {
   const [portResult, setPortResult] = useState(null);
 
   const [logs, setLogs] = useState([]);
+  const [logQuery, setLogQuery] = useState('');
+  const [logTool, setLogTool] = useState('all');
   const [users, setUsers] = useState([]);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -540,6 +618,15 @@ export default function App() {
   const refreshLogs = async () => {
     setLogs(await authedRequest('/api/network/logs?limit=50'));
   };
+
+  const filteredLogs = logs.filter((row) => {
+    const toolMatched = logTool === 'all' || row.tool === logTool;
+    const keyword = logQuery.trim().toLowerCase();
+    if (!keyword) return toolMatched;
+    return toolMatched && [row.operator, row.tool, row.message, row.target, row.detail]
+      .some((value) => String(value || '').toLowerCase().includes(keyword));
+  });
+  const logTools = ['all', ...new Set(logs.map((row) => row.tool).filter(Boolean))];
 
   const refreshUsers = async () => {
     if (user?.role !== 'admin') return;
@@ -1168,7 +1255,7 @@ export default function App() {
   }
 
   return (
-    <div className={vncExpanded ? 'app-shell vnc-expanded' : 'app-shell'}>
+    <div className={vncExpanded || sshExpanded || rdpExpanded ? 'app-shell remote-expanded' : 'app-shell'}>
       <aside className="sidebar">
         <div>
           <div className="brand large">OpsJump</div>
@@ -1339,15 +1426,21 @@ export default function App() {
               <button type="submit">连接 VNC</button>
             </form>
             <div className="status-line">状态: {vncStatus}</div>
+            <div className="gesture-hint">移动端提示：进入全屏后使用右上角工具条退出；远程桌面内可单指点击、拖动，必要时横屏使用。</div>
             {vncSessionId ? (
               <div className={vncExpanded ? 'vnc-host fullscreen' : 'vnc-host'}>
-                <VncViewer
-                  key={vncSessionId}
-                  sessionId={vncSessionId}
-                  password={vncForm.password}
-                  onStatus={setVncStatus}
-                  expanded={vncExpanded}
-                />
+                {vncExpanded ? (
+                  <FullscreenToolbar label="VNC" status={vncStatus} onExit={() => setVncExpanded(false)} onDisconnect={disconnectVnc} />
+                ) : null}
+                <Suspense fallback={<div className="empty-hint">正在加载 VNC 组件...</div>}>
+                  <VncViewer
+                    key={vncSessionId}
+                    sessionId={vncSessionId}
+                    password={vncForm.password}
+                    onStatus={setVncStatus}
+                    expanded={vncExpanded}
+                  />
+                </Suspense>
               </div>
             ) : (
               <div className="empty-hint">连接后这里会显示远程桌面。</div>
@@ -1383,14 +1476,20 @@ export default function App() {
               <button type="submit">连接 SSH</button>
             </form>
             <div className="status-line">状态: {sshStatus}</div>
+            <div className="gesture-hint">移动端提示：进入全屏后右上角可退出；键盘由系统输入法控制，建议横屏操作。</div>
             {sshSessionId ? (
               <div className={sshExpanded ? 'ssh-host fullscreen' : 'ssh-host'}>
-                <SshTerminal
-                  key={sshSessionId}
-                  sessionId={sshSessionId}
-                  onStatus={setSshStatus}
-                  expanded={sshExpanded}
-                />
+                {sshExpanded ? (
+                  <FullscreenToolbar label="SSH" status={sshStatus} onExit={() => setSshExpanded(false)} onDisconnect={disconnectSsh} />
+                ) : null}
+                <Suspense fallback={<div className="empty-hint">正在加载 SSH 终端...</div>}>
+                  <SshTerminal
+                    key={sshSessionId}
+                    sessionId={sshSessionId}
+                    onStatus={setSshStatus}
+                    expanded={sshExpanded}
+                  />
+                </Suspense>
               </div>
             ) : (
               <div className="empty-hint">连接后这里会显示 SSH 终端。</div>
@@ -1427,15 +1526,21 @@ export default function App() {
               <button type="submit">连接 Windows 桌面</button>
             </form>
             <div className="status-line">状态: {rdpStatus}</div>
+            <div className="gesture-hint">移动端提示：进入全屏后右上角可退出；单指点击/拖动，横屏视野更好。</div>
             {rdpSessionId ? (
               <div className={rdpExpanded ? 'rdp-host fullscreen' : 'rdp-host'}>
-                <RdpViewer
-                  key={rdpSessionId}
-                  sessionId={rdpSessionId}
-                  connectionToken={rdpConnectionToken}
-                  onStatus={setRdpStatus}
-                  expanded={rdpExpanded}
-                />
+                {rdpExpanded ? (
+                  <FullscreenToolbar label="Windows 桌面" status={rdpStatus} onExit={() => setRdpExpanded(false)} onDisconnect={disconnectRdp} />
+                ) : null}
+                <Suspense fallback={<div className="empty-hint">正在加载 Windows 桌面组件...</div>}>
+                  <RdpViewer
+                    key={rdpSessionId}
+                    sessionId={rdpSessionId}
+                    connectionToken={rdpConnectionToken}
+                    onStatus={setRdpStatus}
+                    expanded={rdpExpanded}
+                  />
+                </Suspense>
               </div>
             ) : (
               <div className="empty-hint">连接后这里会显示 Windows 桌面。</div>
@@ -1490,6 +1595,23 @@ export default function App() {
 
         {tab === 'logs' ? (
           <Card title="操作日志" subtitle="只记录登录和用户操作，不记录 ping/端口检测。">
+            <div className="log-toolbar">
+              <input placeholder="搜索用户、动作、目标或详情" value={logQuery} onChange={(e) => setLogQuery(e.target.value)} />
+              <select value={logTool} onChange={(e) => setLogTool(e.target.value)}>
+                {logTools.map((tool) => <option key={tool} value={tool}>{tool === 'all' ? '全部类型' : tool}</option>)}
+              </select>
+              <button className="ghost" type="button" onClick={refreshLogs}>刷新</button>
+            </div>
+            <div className="log-list">
+              {filteredLogs.map((row) => (
+                <article key={row.id} className="log-item">
+                  <strong>{row.message}</strong>
+                  <small>{formatTime(row.created_at)} · {row.operator || 'system'} · {row.tool}</small>
+                  <span>{row.target}</span>
+                  <small>{row.detail}</small>
+                </article>
+              ))}
+            </div>
             <div className="table-wrap">
               <table>
                 <thead>
@@ -1503,7 +1625,7 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.map((row) => (
+                  {filteredLogs.map((row) => (
                     <tr key={row.id}>
                       <td>{formatTime(row.created_at)}</td>
                       <td>{row.operator || 'system'}</td>
