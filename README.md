@@ -96,7 +96,6 @@ docker-compose down
 - 首次运行会自动构建前端和后端镜像
 - `data/`、`caddy_data/`、`caddy_config/` 会自动持久化
 - 默认通过 `9010` 提供 HTTP，通过 `9443` 提供 HTTPS
-- 默认账号为 `admin / admin123`
 
 ## RockyLinux / Podman
 
