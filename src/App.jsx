@@ -1247,7 +1247,7 @@ export default function App() {
       <div className="login-shell">
         <form className="login-card" onSubmit={handleLogin}>
           <div className="brand">OpsJump</div>
-          <h1>快捷访问与运维入口</h1>
+          <h1>OPS工具集成平台</h1>
           <p>请输入用户名和密码登录</p>
           <label>
             用户名
