@@ -168,7 +168,7 @@ function PresetBar({ protocol, presets, selectedId, onApply, onSave, onDelete })
   );
 }
 
-function TabBar({ tab, setTab, user }) {
+function TabBar({ tab, setTab, user, onAbout }) {
   return (
     <div className="mobile-nav">
       {[
@@ -187,6 +187,7 @@ function TabBar({ tab, setTab, user }) {
       {user?.role === 'admin' ? (
         <button type="button" className={tab === 'users' ? 'nav active' : 'nav'} onClick={() => setTab('users')}>用户</button>
       ) : null}
+      <button type="button" className="nav" onClick={onAbout}>关于</button>
     </div>
   );
 }
@@ -580,6 +581,7 @@ export default function App() {
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState(null);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '' });
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [hostPresets, setHostPresets] = useState(() => loadHostPresets());
   const [presetSelections, setPresetSelections] = useState({ ftp: '', sftp: '', vnc: '', ssh: '', rdp: '', network: '' });
   const [shortcutCategory, setShortcutCategory] = useState(() => loadShortcutCategory());
@@ -749,10 +751,17 @@ export default function App() {
         setVncExpanded(false);
         setSshExpanded(false);
         setRdpExpanded(false);
+        setAboutOpen(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const onOpenAbout = () => setAboutOpen(true);
+    window.addEventListener('opsjump:open-about', onOpenAbout);
+    return () => window.removeEventListener('opsjump:open-about', onOpenAbout);
   }, []);
 
   const handleLogin = async (e) => {
@@ -1271,13 +1280,14 @@ export default function App() {
         <div className="user-box">
           <div>{user.realName || user.username}</div>
           <small>{user.role}</small>
+          <button className="ghost full" type="button" onClick={() => setAboutOpen(true)}>关于</button>
           <button className="ghost full" onClick={() => openResetPassword(user)}>修改密码</button>
           <button className="ghost full" onClick={handleLogout}>退出登录</button>
         </div>
       </aside>
 
       <main className="content">
-        <TabBar tab={tab} setTab={setTab} user={user} />
+        <TabBar tab={tab} setTab={setTab} user={user} onAbout={() => setAboutOpen(true)} />
         <header className="topbar">
           <div>
             <h1>{tab === 'shortcuts' ? '快捷访问' : tab === 'remote' ? 'FTP / SFTP' : tab === 'vnc' ? 'VNC' : tab === 'ssh' ? 'SSH' : tab === 'rdp' ? 'Windows 桌面' : tab === 'network' ? '网络检测' : tab === 'users' ? '用户管理' : '操作日志'}</h1>
@@ -1711,6 +1721,21 @@ export default function App() {
             </label>
             <button type="submit">保存</button>
           </form>
+        </Modal>
+      ) : null}
+
+      {aboutOpen ? (
+        <Modal title="关于 OpsJump" onClose={() => setAboutOpen(false)}>
+          <div className="about-card">
+            <p><strong>开发者：</strong>qianj</p>
+            <p><strong>邮箱：</strong><a href="mailto:fudanwuxi@126.com">fudanwuxi@126.com</a></p>
+            <p>
+              OpsJump 是一个面向内网运维场景的 Web 门户，提供快捷入口、远程连接、文件传输、网络检测和操作审计等能力。
+            </p>
+            <p>
+              <a href="https://github.com/zhaoxixc/OpsJump" target="_blank" rel="noreferrer">https://github.com/zhaoxixc/OpsJump</a>
+            </p>
+          </div>
         </Modal>
       ) : null}
 

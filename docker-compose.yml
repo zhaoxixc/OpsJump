@@ -2,6 +2,10 @@ services:
   guacd:
     image: guacamole/guacd:1.5.5
     restart: unless-stopped
+    networks:
+      opsjump:
+        aliases:
+          - guacd
 
   quick-portal:
     build: .
@@ -23,6 +27,12 @@ services:
       - ./data:/app/data
       - ./caddy_data:/caddy-data
     restart: unless-stopped
+    networks:
+      opsjump:
+        aliases:
+          - quick-portal
+          - quickportal
+          - opsjump_quick-portal
 
   caddy:
     image: caddy:2.8-alpine
@@ -35,6 +45,12 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy_data:/data
       - ./caddy_config:/config
+    networks:
+      - opsjump
     command: >
       sh -c 'until [ -f /data/selfsigned.crt ] && [ -f /data/selfsigned.key ]; do sleep 1; done; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile'
     restart: unless-stopped
+
+networks:
+  opsjump:
+    driver: bridge

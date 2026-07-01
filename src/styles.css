@@ -792,6 +792,22 @@ th { color: var(--muted); font-weight: 600; }
 
 .modal-form button { margin-top: 8px; }
 
+.about-card {
+  display: grid;
+  gap: 12px;
+  color: #d8dee9;
+}
+
+.about-card p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.about-card a {
+  color: #93c5fd;
+  word-break: break-all;
+}
+
 @media (max-width: 900px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar {
